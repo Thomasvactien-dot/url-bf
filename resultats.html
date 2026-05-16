@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Résultats Sondage — BurkinaFood Survey</title>
+<style>
+  :root { --c:#E85D04; --cl:#FFF3E0; --dk:#1a1a2e; --tx:#222; --mu:#666; --bd:#e0e0e0; --r:10px; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f8f4f0;min-height:100vh;color:var(--tx);}
+  .hd{background:var(--c);color:#fff;padding:20px;text-align:center;}
+  .hd-icon{font-size:42px;margin-bottom:8px;}
+  .hd h1{font-size:22px;font-weight:700;margin-bottom:4px;}
+  .hd p{font-size:13px;opacity:.85;}
+  .cnt{max-width:1000px;margin:0 auto;padding:20px 16px;}
+  .st{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--c);margin:24px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--cl);}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;}
+  .stat-card{background:#fff;border-radius:var(--r);border:1px solid var(--bd);padding:16px;text-align:center;}
+  .stat-card h3{font-size:12px;color:var(--mu);text-transform:uppercase;margin-bottom:8px;}
+  .stat-card .val{font-size:32px;font-weight:700;color:var(--c);}
+  .chart{background:#fff;border-radius:var(--r);border:1px solid var(--bd);padding:20px;margin-bottom:16px;}
+  .chart h3{font-size:14px;font-weight:600;color:var(--dk);margin-bottom:12px;}
+  .bar-item{margin-bottom:12px;}
+  .bar-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;}
+  .bar-label span:first-child{font-weight:600;}
+  .bar-container{height:24px;background:#ffe0cc;border-radius:4px;overflow:hidden;}
+  .bar{height:100%;background:var(--c);border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;color:#fff;font-size:11px;font-weight:600;min-width:30px;}
+  .comment-box{background:#fff;border-radius:var(--r);border:1px solid var(--bd);padding:16px;margin-bottom:12px;}
+  .comment-box .ref{font-size:11px;color:var(--c);font-weight:700;margin-bottom:4px;}
+  .comment-box p{font-size:13px;color:var(--tx);line-height:1.5;}
+  .btn-export{background:var(--c);color:#fff;border:none;padding:12px 24px;border-radius:var(--r);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:20px;}
+  .btn-export:hover{opacity:0.9;}
+  .filter{background:#fff;border-radius:var(--r);border:1px solid var(--bd);padding:16px;margin-bottom:20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+  .filter input{padding:8px 12px;border:1px solid var(--bd);border-radius:6px;font-size:13px;}
+  .empty{text-align:center;padding:40px 20px;color:var(--mu);}
+  .empty-icon{font-size:48px;margin-bottom:12px;}
+</style>
+</head>
+<body>
+<div class="hd">
+  <div class="hd-icon">📊</div>
+  <h1>Résultats du Sondage</h1>
+  <p>Analyse des réponses BurkinaFood Survey 2025</p>
+</div>
+<div class="cnt">
+  <button class="btn-export" onclick="exportCSV()">📥 Exporter en CSV</button>
+  
+  <div class="filter">
+    <input type="text" id="search" placeholder="Chercher une référence (CLI-...)..." style="flex:1;min-width:250px;">
+    <button onclick="filterResults()" style="background:var(--c);color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;">Filtrer</button>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <h3>Total réponses</h3>
+      <div class="val" id="total">0</div>
+    </div>
+    <div class="stat-card">
+      <h3>Réponses complètes</h3>
+      <div class="val" id="complete">0</div>
+    </div>
+    <div class="stat-card">
+      <h3>Date dernière</h3>
+      <div class="val" style="font-size:14px;" id="lastDate">—</div>
+    </div>
+  </div>
+
+  <div id="charts"></div>
+  <div id="comments"></div>
+  
+  <div id="empty" class="empty" style="display:none;">
+    <div class="empty-icon">📭</div>
+    <p>Aucune réponse enregistrée pour le moment.</p>
+  </div>
+</div>
+
+<script>
+var SK='burkina_survey_responses';
+
+function getDB(){try{return JSON.parse(localStorage.getItem(SK)||'[]');}catch(e){return[];}}
+
+function getStats(data){
+  var stats={};
+  data.forEach(function(r){
+    Object.keys(r.answers).forEach(function(k){
+      if(!stats[k]) stats[k]={values:{},type:'text'};
+      var v=r.answers[k];
+      if(Array.isArray(v)){
+        stats[k].type='multi';
+        v.forEach(function(item){
+          stats[k].values[item]=(stats[k].values[item]||0)+1;
+        });
+      } else if(v && typeof v==='string' && v.trim()){
+        stats[k].type='single';
+        stats[k].values[v]=(stats[k].values[v]||0)+1;
+      }
+    });
+  });
+  return stats;
+}
+
+function renderChart(id,label,values,isPercent){
+  var sorted=Object.entries(values).sort(function(a,b){return b[1]-a[1];});
+  var max=sorted[0]?sorted[0][1]:1;
+  var html='<div class="chart"><h3>'+label+'</h3>';
+  sorted.forEach(function(e){
+    var pct=Math.round((e[1]/max)*100);
+    var display=isPercent?Math.round((e[1]/Object.values(values).reduce(function(a,b){return a+b;},0))*100)+'%':e[1];
+    html+='<div class="bar-item"><div class="bar-label"><span>'+e[0]+'</span><span>'+display+'</span></div><div class="bar-container"><div class="bar" style="width:'+pct+'%">'+e[1]+'</div></div></div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+function render(){
+  var data=getDB();
+  var total=data.length;
+  
+  if(total===0){
+    document.getElementById('empty').style.display='block';
+    document.getElementById('charts').innerHTML='';
+    document.getElementById('total').textContent='0';
+    document.getElementById('complete').textContent='0';
+    return;
+  }
+  document.getElementById('empty').style.display='none';
+  document.getElementById('total').textContent=total;
+  document.getElementById('complete').textContent=total;
+  
+  var dates=data.map(function(r){return new Date(r.date);}).sort(function(a,b){return b-a;});
+  if(dates[0]){
+    document.getElementById('lastDate').textContent=dates[0].toLocaleDateString('fr-FR');
+  }
+  
+  var stats=getStats(data);
+  var html='';
+  
+  var questions={
+    'genre':'Quel est votre genre ?',
+    'age':'Tranche d\'âge',
+    'sit':'Situation professionnelle',
+    'ville':'Ville de résidence',
+    'phone':'Possède un smartphone',
+    'lieu':'Où prennent les repas',
+    'freq':'Fréquence de commande',
+    'budget':'Budget moyen par repas',
+    'plats':'Types de plats commandés',
+    'app':'Utilisation app de livraison',
+    'interet':'Intérêt pour l\'app',
+    'fonc':'Fonctionnalités importantes',
+    'delai':'Délai acceptable',
+    'frais':'Frais de livraison acceptables',
+    'paie':'Mode de paiement',
+    'freins':'Freins à l\'utilisation'
+  };
+  
+  Object.keys(stats).forEach(function(k){
+    if(questions[k]&&stats[k].type!=='text'){
+      html+=renderChart(k,questions[k],stats[k].values,false);
+    }
+  });
+  
+  document.getElementById('charts').innerHTML=html;
+  
+  var comHtml='<div class="st">Commentaires libres</div>';
+  var hasComments=false;
+  data.forEach(function(r){
+    if(r.answers.com&&r.answers.com.trim()){
+      hasComments=true;
+      comHtml+='<div class="comment-box"><div class="ref">'+r.id+' — '+r.date+' '+r.heure+'</div><p>'+r.answers.com.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p></div>';
+    }
+  });
+  if(hasComments) document.getElementById('comments').innerHTML=comHtml;
+}
+
+function exportCSV(){
+  var data=getDB();
+  if(data.length===0){alert('Aucune donnée à exporter');return;}
+  
+  var csv='ID,Date,Heure,Genre,Âge,Situation,Ville,Smartphone,Lieu,Fréquence,Budget,Plats,App,Intérêt,Fonctionnalités,Délai,Frais,Paiement,Freins,Commentaires\n';
+  data.forEach(function(r){
+    var a=r.answers;
+    csv+=[r.id,r.date,r.heure,a.genre||'',a.age||'',a.sit||'',a.ville||'',a.phone||'',a.lieu||'',a.freq||'',a.budget||'',(a.plats||[]).join(';'),a.app||'',a.interet||'',(a.fonc||[]).join(';'),a.delai||'',a.frais||'',a.paie||'',(a.freins||[]).join(';'),'"'+(a.com||'').replace(/"/g,'""')+'"'].map(function(x){return typeof x==='string'?'"'+x+'"':x;}).join(',')+'\n';
+  });
+  
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var link=document.createElement('a');
+  link.href=URL.createObjectURL(blob);
+  link.download='sondage_results_'+new Date().toISOString().slice(0,10)+'.csv';
+  link.click();
+}
+
+function filterResults(){
+  var search=document.getElementById('search').value.toLowerCase();
+  var data=getDB().filter(function(r){return r.id.toLowerCase().includes(search);});
+  if(search&&data.length===0){
+    document.getElementById('charts').innerHTML='<div class="empty"><p>Aucun résultat trouvé</p></div>';
+    document.getElementById('comments').innerHTML='';
+    return;
+  }
+  if(!search){render();return;}
+  
+  var stats=getStats(data);
+  var html='';
+  var questions={
+    'genre':'Quel est votre genre ?',
+    'age':'Tranche d\'âge',
+    'sit':'Situation professionnelle',
+    'ville':'Ville de résidence',
+    'phone':'Possède un smartphone',
+    'lieu':'Où prennent les repas',
+    'freq':'Fréquence de commande',
+    'budget':'Budget moyen par repas',
+    'plats':'Types de plats commandés',
+    'app':'Utilisation app de livraison',
+    'interet':'Intérêt pour l\'app',
+    'fonc':'Fonctionnalités importantes',
+    'delai':'Délai acceptable',
+    'frais':'Frais de livraison acceptables',
+    'paie':'Mode de paiement',
+    'freins':'Freins à l\'utilisation'
+  };
+  
+  Object.keys(stats).forEach(function(k){
+    if(questions[k]&&stats[k].type!=='text'){
+      html+=renderChart(k,questions[k],stats[k].values,false);
+    }
+  });
+  document.getElementById('charts').innerHTML=html;
+}
+
+render();
+setInterval(render,2000);
+</script>
+</body>
+</html>
